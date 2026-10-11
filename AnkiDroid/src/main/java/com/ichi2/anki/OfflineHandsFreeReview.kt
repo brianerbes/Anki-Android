@@ -156,13 +156,13 @@ internal class OfflineHandsFreeReview(
                     report("Offline text-to-speech is unavailable. Use the normal review controls.")
                     return@launch
                 }
-                val model = loadModel()
-                if (!isCurrent(requestGeneration)) return@launch
                 if (spanishVoice == null) {
                     active = false
                     report("Install an offline Spanish text-to-speech voice before using hands-free review.")
                     return@launch
                 }
+                val model = loadModel()
+                if (!isCurrent(requestGeneration)) return@launch
                 // Touching the model here also ensures it has been completely opened
                 // before the recognizer starts.
                 @Suppress("UNUSED_VARIABLE")
