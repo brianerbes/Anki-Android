@@ -196,7 +196,6 @@ abstract class AbstractFlashcardViewer :
     private var replayOnTtsInit = false
     private var handsFreeReviewer: OfflineHandsFreeReview? = null
     private var handsFreeShowingCorrection = false
-    private var handsFreeApplyingAutomaticRating = false
 
     @VisibleForTesting
     val jsApi by lazy { AnkiDroidJsAPI(this) }
@@ -871,10 +870,8 @@ abstract class AbstractFlashcardViewer :
     }
 
     open fun answerCard(rating: Rating) {
-        if (!handsFreeApplyingAutomaticRating) {
-            handsFreeReviewer?.cancelCurrentCard()
-            handsFreeShowingCorrection = false
-        }
+        handsFreeReviewer?.cancelCurrentCard()
+        handsFreeShowingCorrection = false
         preventSimultaneousExecutions(ANSWER_CARD) {
             launchCatchingTask {
                 if (inAnswer) {
@@ -1451,12 +1448,7 @@ abstract class AbstractFlashcardViewer :
         if (currentCard?.id != cardId || displayAnswer) return
         if (OfflineHandsFreeReview.matchesAnswer(transcript, acceptedAnswers)) {
             showHandsFreeStatus("Correct: $transcript")
-            handsFreeApplyingAutomaticRating = true
-            try {
-                answerCard(Rating.GOOD)
-            } finally {
-                handsFreeApplyingAutomaticRating = false
-            }
+            answerCard(Rating.GOOD)
             return
         }
 
@@ -1467,12 +1459,7 @@ abstract class AbstractFlashcardViewer :
         handsFreeReviewer?.speakCorrection(cardId, expectedAnswer) {
             if (currentCard?.id == cardId && displayAnswer) {
                 handsFreeShowingCorrection = false
-                handsFreeApplyingAutomaticRating = true
-                try {
-                    answerCard(Rating.AGAIN)
-                } finally {
-                    handsFreeApplyingAutomaticRating = false
-                }
+                answerCard(Rating.AGAIN)
             } else {
                 handsFreeShowingCorrection = false
             }
