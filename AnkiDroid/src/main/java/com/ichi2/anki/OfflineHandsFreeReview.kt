@@ -498,10 +498,11 @@ internal class OfflineHandsFreeReview(
                     if (!isValidModel(destination)) {
                         installModel(destination)
                     }
-                    Model(destination.absolutePath)
+                    val model = Model(destination.absolutePath)
+                    runCatching { JapaneseSpeechTextNormalizer.warmUp() }
+                        .onFailure { Timber.w(it, "Could not prewarm Japanese reading dictionary") }
+                    model
                 }
-            runCatching { JapaneseSpeechTextNormalizer.warmUp() }
-                .onFailure { Timber.w(it, "Could not prewarm Japanese reading dictionary") }
             voskModel = loaded
             loaded
         }
