@@ -2,7 +2,7 @@
 
 ## What it does
 
-When enabled in **Settings → Advanced → Hands-free Japanese review**, AnkiDroid reads the front of the card using an installed *offline Spanish text-to-speech voice*, records the spoken answer, transcribes Japanese using Vosk on-device, and compares the transcript against accepted answers. A match is graded **Good**. A mismatch reveals and reads the expected answer if an offline Japanese TTS voice exists, then grades **Again**. If the prompt cannot be spoken, no answer can be found, recognition fails, or the time limit expires, the card is not automatically graded.
+When enabled in **Settings → Advanced → Hands-free Japanese review**, AnkiDroid reads the front of the card using an installed *offline Spanish text-to-speech voice*, records the spoken answer, transcribes Japanese using Vosk on-device, and compares the transcript against accepted answers. A match is graded **Good**. A mismatch reveals and reads the expected answer if an offline Japanese TTS voice exists, then grades **Again**. If the prompt cannot be spoken, no answer can be found, recognition errors, or the time limit expires without a completed transcript, the card is not automatically graded. If Vosk finalized a speech segment before the listening timeout, that segment may still be checked.
 
 This feature is experimental. Disable it to return to normal manual review at any time.
 
