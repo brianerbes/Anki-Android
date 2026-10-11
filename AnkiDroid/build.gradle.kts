@@ -790,6 +790,9 @@ dependencies {
     implementation(libs.nanohttpd)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.seismic)
+    // Offline Japanese speech recognition. The model is installed separately on first use.
+    implementation("com.alphacephei:vosk-android:0.3.75@aar")
+    implementation("net.java.dev.jna:jna:5.18.1@aar")
     implementation(libs.process.phoenix)
 
     debugImplementation(libs.androidx.fragment.testing.manifest)
