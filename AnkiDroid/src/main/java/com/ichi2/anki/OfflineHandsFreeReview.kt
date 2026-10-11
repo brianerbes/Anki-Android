@@ -376,7 +376,9 @@ internal class OfflineHandsFreeReview(
                 resultParts.clear()
                 finalizing = false
                 report("Hands-free: listening…")
-                newService.startListening(listenerFor(requestGeneration))
+                check(newService.startListening(listenerFor(requestGeneration))) {
+                    "Vosk speech service did not start"
+                }
                 val timeout = Runnable {
                     if (isCurrent(requestGeneration)) stopForFinalResult(requestGeneration)
                 }
@@ -559,7 +561,13 @@ internal class OfflineHandsFreeReview(
                     if (!isValidModel(destination)) {
                         installModel(destination)
                     }
-                    val model = Model(destination.absolutePath)
+                    val model =
+                        try {
+                            Model(destination.absolutePath)
+                        } catch (e: Exception) {
+                            destination.deleteRecursively()
+                            throw e
+                        }
                     runCatching { JapaneseSpeechTextNormalizer.warmUp() }
                         .onFailure { Timber.w(it, "Could not prewarm Japanese reading dictionary") }
                     model
