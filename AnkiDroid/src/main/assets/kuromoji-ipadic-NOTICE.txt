@@ -62,13 +62,13 @@ the use, modification, copying and distribution of the program and the
 production of secondary products from the program.
 
 In the case where the program was distributed or delivered to or received by a
-user from any person, organization or entity other than ICOT, unless it makes
-or grants independently of ICOT any specific warranty to the user in writing,
-such person, organization or entity will also be exempted from and not be held
-liable to the user for any and all damages, including, without limitation,
-general, special, incidental and consequential damages, arising out of or
-otherwise in connection with the use or inability to use the program or any
-product, material or result produced or otherwise obtained by using the
+user from any person, organization or entity other than ICOT, unless that
+person, organization or entity makes or grants independently of ICOT any
+specific warranty to the user in writing, it will also be exempted from and not
+be held liable to the user for any and all damages, including, without
+limitation, general, special, incidental and consequential damages, arising
+out of or otherwise in connection with use or inability to use the program or
+any product, material or result produced or otherwise obtained by using the
 program, regardless of whether they have been advised of, or otherwise had
 knowledge of, the possibility of such damages at any time during the project
 or thereafter.
