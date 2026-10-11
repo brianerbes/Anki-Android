@@ -808,7 +808,7 @@ internal object JapaneseSpeechTextNormalizer {
                 val next = input[index + 1]
                 if (next == 'n') {
                     output.append('ん')
-                    index++
+                    index += if (index + 2 >= input.length) 2 else 1
                     continue
                 }
                 if (next !in "aiueoy" && next.isLetter()) {
