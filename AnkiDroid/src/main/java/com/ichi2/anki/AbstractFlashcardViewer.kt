@@ -1393,24 +1393,36 @@ abstract class AbstractFlashcardViewer :
                     .filter { it.isNotEmpty() }
             } else {
                 val japaneseText = Regex("[ぁ-ゖァ-ヺ一-龯々〆〤]")
-                namedFields
-                    .filterNot { (name, _) ->
-                        name.equals("VoiceAccepted", ignoreCase = true) ||
-                            name.equals("VoiceAnswers", ignoreCase = true)
-                    }.flatMap { (_, fieldValue) ->
-                        val plain = stripHTMLAndSpecialFields(fieldValue).trim()
-                        val values = mutableListOf(plain)
-                        values += Regex("[（(]([^）)]+)[）)]")
-                            .findAll(plain)
-                            .map { it.groupValues[1] }
-                            .toList()
-                        values.flatMap { it.split(Regex("[|;；\\r\\n,，、]+")) }
-                    }.map { it.trim().trim('(', ')', '[', ']', '（', '）') }
-                    .filter { candidate ->
-                        candidate.isNotBlank() &&
-                            japaneseText.containsMatchIn(candidate) &&
-                            OfflineHandsFreeReview.normalizeForComparison(candidate) != promptNormalized
-                    }.distinct()
+                val candidateFields =
+                    namedFields
+                        .filterNot { (name, _) ->
+                            name.equals("VoiceAccepted", ignoreCase = true) ||
+                                name.equals("VoiceAnswers", ignoreCase = true)
+                        }.flatMap { (_, fieldValue) ->
+                            val plain = stripHTMLAndSpecialFields(fieldValue).trim()
+                            val values = mutableListOf(plain)
+                            values += Regex("[（(]([^）)]+)[）)]")
+                                .findAll(plain)
+                                .map { it.groupValues[1] }
+                                .toList()
+                            values.flatMap { it.split(Regex("[|;；\\r\\n,，、]+")) }
+                        }.map { it.trim().trim('(', ')', '[', ']', '（', '）') }
+                        .filter { candidate ->
+                            candidate.isNotBlank() &&
+                                OfflineHandsFreeReview.normalizeForComparison(candidate) != promptNormalized
+                        }
+                        .distinct()
+                val japaneseCandidates = candidateFields.filter { japaneseText.containsMatchIn(it) }
+                if (japaneseCandidates.isNotEmpty()) {
+                    japaneseCandidates
+                } else {
+                    // Common decks store the answer as romaji (e.g. "ikimasu"). When no
+                    // kana/kanji fields exist, use the first simple Latin word that is not
+                    // the prompt. Users can remove any ambiguity with VoiceAccepted.
+                    candidateFields
+                        .filter { it.matches(Regex("[A-Za-z]+")) }
+                        .take(1)
+                }
             }
 
         if (acceptedAnswers.isEmpty()) {
