@@ -112,7 +112,7 @@ internal class OfflineHandsFreeReview(
                         if (!isCurrent(expectedGeneration)) return@post
                         when {
                             id.startsWith("handsfree-question-") -> beginListening(expectedGeneration)
-                            id.startsWith("handsfree-correction-") -> {
+                            id.startsWith("handsfree-correction-") || id.startsWith("handsfree-feedback-") -> {
                                 val action = correctionAction
                                 correctionAction = null
                                 action?.invoke()
@@ -211,6 +211,39 @@ internal class OfflineHandsFreeReview(
         finalizing = false
     }
 
+    /** Speak a brief local confirmation before grading a correct response. */
+    fun speakCorrectFeedback(
+        cardId: Long,
+        onDone: () -> Unit,
+    ) {
+        val requestGeneration = generation
+        if (!active || activeCardId != cardId) return
+        val engine = tts
+        val voice = spanishVoice
+        if (engine == null || voice == null) {
+            onDone()
+            return
+        }
+        correctionAction = onDone
+        engine.voice = voice
+        val result = engine.speak(
+            "Correcto",
+            TextToSpeech.QUEUE_FLUSH,
+            Bundle(),
+            "handsfree-feedback-$requestGeneration",
+        )
+        if (result == TextToSpeech.ERROR) {
+            report("Could not speak confirmation; grading the card.")
+            mainHandler.postDelayed({
+                if (isCurrent(requestGeneration)) {
+                    val action = correctionAction
+                    correctionAction = null
+                    action?.invoke()
+                }
+            }, 500L)
+        }
+    }
+
     /** Speak a missed answer locally, then let the caller grade the card as Again. */
     fun speakCorrection(
         cardId: Long,
@@ -280,17 +313,28 @@ internal class OfflineHandsFreeReview(
                 }
                 id.startsWith("handsfree-correction-") -> {
                     report("Could not read the correction aloud. The answer is shown; grading Again.")
-                    mainHandler.postDelayed({
-                        if (isCurrent(expectedGeneration)) {
-                            val action = correctionAction
-                            correctionAction = null
-                            action?.invoke()
-                        }
-                    }, CORRECTION_FALLBACK_DELAY_MS)
+                    runCorrectionActionAfterDelay(expectedGeneration, CORRECTION_FALLBACK_DELAY_MS)
+                }
+                id.startsWith("handsfree-feedback-") -> {
+                    report("Could not speak confirmation; grading the card.")
+                    runCorrectionActionAfterDelay(expectedGeneration, 500L)
                 }
                 else -> report("Offline text-to-speech failed.")
             }
         }
+    }
+
+    private fun runCorrectionActionAfterDelay(
+        requestGeneration: Long,
+        delayMs: Long,
+    ) {
+        mainHandler.postDelayed({
+            if (isCurrent(requestGeneration)) {
+                val action = correctionAction
+                correctionAction = null
+                action?.invoke()
+            }
+        }, delayMs)
     }
 
     private fun speakQuestion(prompt: String, requestGeneration: Long) {
