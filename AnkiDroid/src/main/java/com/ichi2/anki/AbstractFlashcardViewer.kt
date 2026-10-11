@@ -1372,7 +1372,7 @@ abstract class AbstractFlashcardViewer :
         }
         val card = currentCard ?: return
         val collection = getColUnsafe
-        val prompt = stripHTMLAndSpecialFields(card.question(collection, true)).trim()
+        val prompt = cleanHandsFreeText(card.question(collection, true))
         val note = card.note(collection, true)
         val namedFields = note.notetype.fieldsNames.zip(note.fields)
         val promptNormalized = OfflineHandsFreeReview.normalizeForComparison(prompt)
@@ -1386,7 +1386,7 @@ abstract class AbstractFlashcardViewer :
             if (!explicitVoiceAnswer.isNullOrBlank()) {
                 explicitVoiceAnswer
                     .split(Regex("[|;；\\r\\n]+"))
-                    .map { stripHTMLAndSpecialFields(it).trim() }
+                    .map(::cleanHandsFreeText)
                     .filter { it.isNotEmpty() }
             } else {
                 val japaneseText = Regex("[ぁ-ゖァ-ヺ一-龯々〆〤]")
@@ -1396,7 +1396,7 @@ abstract class AbstractFlashcardViewer :
                             name.equals("VoiceAccepted", ignoreCase = true) ||
                                 name.equals("VoiceAnswers", ignoreCase = true)
                         }.flatMap { (_, fieldValue) ->
-                            val plain = stripHTMLAndSpecialFields(fieldValue).trim()
+                            val plain = cleanHandsFreeText(fieldValue)
                             val values = mutableListOf(plain)
                             values += Regex("[（(]([^）)]+)[）)]")
                                 .findAll(plain)
@@ -1439,6 +1439,12 @@ abstract class AbstractFlashcardViewer :
         handsFreeShowingCorrection = false
         reviewer.startCard(card.id, prompt, acceptedAnswers)
     }
+
+    private fun cleanHandsFreeText(text: String): String =
+        stripHTMLAndSpecialFields(text)
+            .replace(Regex("""(?i)\\[sound:[^\\]]+\\]"""), " ")
+            .replace(Regex("""\\s+"""), " ")
+            .trim()
 
     private fun onHandsFreeTranscript(
         cardId: Long,
