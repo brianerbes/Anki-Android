@@ -40,6 +40,11 @@ class OfflineHandsFreeReviewTest {
     }
 
     @Test
+    fun terminalDoubleNIsOneNasal() {
+        assertEquals("ん", JapaneseSpeechTextNormalizer.toHiraganaReading("nn"))
+    }
+
+    @Test
     fun differentAnswerDoesNotMatch() {
         assertFalse(OfflineHandsFreeReview.matchesAnswer("行きません", listOf("行きます", "いきます")))
     }
