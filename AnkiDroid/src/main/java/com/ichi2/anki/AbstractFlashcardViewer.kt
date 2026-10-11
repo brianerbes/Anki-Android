@@ -8,10 +8,12 @@
 // TODO: implement own menu? http://www.codeproject.com/Articles/173121/Android-Menus-My-Way
 package com.ichi2.anki
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.SharedPreferences
 import android.content.res.Configuration
 import android.graphics.Bitmap
@@ -49,6 +51,7 @@ import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.RelativeLayout
+import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.ActivityResult
 import androidx.activity.result.ActivityResultCallback
@@ -66,6 +69,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.children
 import androidx.core.view.isVisible
 import androidx.lifecycle.Lifecycle.State.RESUMED
+import androidx.preference.PreferenceManager
 import anki.collection.OpChanges
 import anki.scheduler.CardAnswer.Rating
 import com.drakeet.drawer.FullDraggableContainer
@@ -190,6 +194,8 @@ abstract class AbstractFlashcardViewer :
     PostRequestHandler {
     private var ttsInitialized = false
     private var replayOnTtsInit = false
+    private var handsFreeReviewer: OfflineHandsFreeReview? = null
+    private var handsFreeShowingCorrection = false
 
     @VisibleForTesting
     val jsApi by lazy { AnkiDroidJsAPI(this) }
@@ -605,6 +611,8 @@ abstract class AbstractFlashcardViewer :
 
     // Saves deck each time Reviewer activity loses focus
     override fun onPause() {
+        handsFreeReviewer?.cancelCurrentCard()
+        handsFreeShowingCorrection = false
         super.onPause()
         gestureDetectorImpl.stopShakeDetector()
         if (this::cardMediaPlayer.isInitialized) {
@@ -655,6 +663,8 @@ abstract class AbstractFlashcardViewer :
     }
 
     override fun onDestroy() {
+        handsFreeReviewer?.close()
+        handsFreeReviewer = null
         super.onDestroy()
         if (this::server.isInitialized) {
             server.stop()
@@ -859,7 +869,9 @@ abstract class AbstractFlashcardViewer :
         }
     }
 
-    open fun answerCard(rating: Rating) =
+    open fun answerCard(rating: Rating) {
+        handsFreeReviewer?.cancelCurrentCard()
+        handsFreeShowingCorrection = false
         preventSimultaneousExecutions(ANSWER_CARD) {
             launchCatchingTask {
                 if (inAnswer) {
@@ -879,6 +891,7 @@ abstract class AbstractFlashcardViewer :
                 updateCardAndRedraw()
             }
         }
+    }
 
     open suspend fun answerCardInner(rating: Rating) {
         // Legacy tests assume they can call answerCard() even outside of Reviewer
@@ -1344,6 +1357,131 @@ abstract class AbstractFlashcardViewer :
         }
     }
 
+    private fun handsFreeVoiceReviewEnabled(): Boolean =
+        PreferenceManager.getDefaultSharedPreferences(this)
+            .getBoolean(PREF_HANDS_FREE_VOICE_REVIEW, false)
+
+    private fun startHandsFreeReviewForCurrentCard() {
+        if (!handsFreeVoiceReviewEnabled()) {
+            handsFreeReviewer?.cancelCurrentCard()
+            return
+        }
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            showHandsFreeStatus("Microphone permission is required. Enable it in Android app settings.")
+            return
+        }
+        val card = currentCard ?: return
+        val collection = getColUnsafe
+        val prompt = cleanHandsFreeText(card.question(collection, true))
+        val note = card.note(collection, true)
+        val namedFields = note.notetype.fieldsNames.zip(note.fields)
+        val promptNormalized = OfflineHandsFreeReview.normalizeForComparison(prompt)
+
+        val explicitVoiceAnswer =
+            namedFields.firstOrNull { (name, _) ->
+                name.equals("VoiceAccepted", ignoreCase = true) ||
+                    name.equals("VoiceAnswers", ignoreCase = true)
+            }?.second
+        val acceptedAnswers =
+            if (!explicitVoiceAnswer.isNullOrBlank()) {
+                explicitVoiceAnswer
+                    .split(Regex("[|;；\\r\\n]+"))
+                    .map(::cleanHandsFreeText)
+                    .filter { it.isNotEmpty() }
+            } else {
+                val japaneseText = Regex("[ぁ-ゖァ-ヺ一-龯々〆〤]")
+                val candidateFields =
+                    namedFields
+                        .filterNot { (name, _) ->
+                            name.equals("VoiceAccepted", ignoreCase = true) ||
+                                name.equals("VoiceAnswers", ignoreCase = true)
+                        }.flatMap { (_, fieldValue) ->
+                            val plain = cleanHandsFreeText(fieldValue)
+                            val values = mutableListOf(plain)
+                            values += Regex("[（(]([^）)]+)[）)]")
+                                .findAll(plain)
+                                .map { it.groupValues[1] }
+                                .toList()
+                            values.flatMap { it.split(Regex("[|;；\\r\\n,，、]+")) }
+                        }.map { it.trim().trim('(', ')', '[', ']', '（', '）') }
+                        .filter { candidate ->
+                            candidate.isNotBlank() &&
+                                OfflineHandsFreeReview.normalizeForComparison(candidate) != promptNormalized
+                        }
+                        .distinct()
+                val japaneseCandidates = candidateFields.filter { japaneseText.containsMatchIn(it) }
+                if (japaneseCandidates.isNotEmpty()) {
+                    japaneseCandidates
+                } else {
+                    // Common decks store the answer as romaji (e.g. "ikimasu"). When no
+                    // kana/kanji fields exist, use the first simple Latin word that is not
+                    // the prompt. Users can remove any ambiguity with VoiceAccepted.
+                    candidateFields
+                        .filter { it.matches(Regex("[A-Za-z]+")) }
+                        .take(1)
+                }
+            }
+
+        if (acceptedAnswers.isEmpty()) {
+            showHandsFreeStatus(
+                "Could not find a Japanese answer field. " +
+                    "Add a VoiceAccepted field or keep the Japanese answer in a note field.",
+            )
+            return
+        }
+
+        val reviewer =
+            handsFreeReviewer ?: OfflineHandsFreeReview(
+                context = this,
+                onStatus = ::showHandsFreeStatus,
+                onTranscript = ::onHandsFreeTranscript,
+            ).also { handsFreeReviewer = it }
+        handsFreeShowingCorrection = false
+        reviewer.startCard(card.id, prompt, acceptedAnswers)
+    }
+
+    private fun cleanHandsFreeText(text: String): String =
+        stripHTMLAndSpecialFields(text)
+            .replace(Regex("""(?i)\[sound:[^\]]+\]"""), " ")
+            .replace(Regex("""[ \t]+"""), " ")
+            .trim()
+
+    private fun onHandsFreeTranscript(
+        cardId: Long,
+        transcript: String,
+        acceptedAnswers: List<String>,
+    ) {
+        if (currentCard?.id != cardId || displayAnswer) return
+        if (OfflineHandsFreeReview.matchesAnswer(transcript, acceptedAnswers)) {
+            showHandsFreeStatus("Correct: $transcript")
+            handsFreeReviewer?.speakCorrectFeedback(cardId) {
+                if (currentCard?.id == cardId && !displayAnswer) {
+                    answerCard(Rating.GOOD)
+                }
+            }
+            return
+        }
+
+        val expectedAnswer = acceptedAnswers.firstOrNull().orEmpty()
+        handsFreeShowingCorrection = true
+        showHandsFreeStatus("Not matched: $transcript. Answer: $expectedAnswer")
+        displayCardAnswer()
+        handsFreeReviewer?.speakCorrection(cardId, expectedAnswer) {
+            if (currentCard?.id == cardId && displayAnswer) {
+                handsFreeShowingCorrection = false
+                answerCard(Rating.AGAIN)
+            } else {
+                handsFreeShowingCorrection = false
+            }
+        }
+    }
+
+    private fun showHandsFreeStatus(message: String) {
+        runOnUiThread {
+            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+        }
+    }
+
     open fun displayCardQuestion() {
         Timber.d("displayCardQuestion()")
         displayAnswer = false
@@ -1361,9 +1499,11 @@ abstract class AbstractFlashcardViewer :
         }
         val content = cardRenderContext!!.renderCard(getColUnsafe, currentCard!!, SingleCardSide.FRONT)
         automaticAnswer.onDisplayQuestion()
-        launchCatchingTask {
-            if (!automaticAnswerShouldWaitForMedia()) {
-                automaticAnswer.scheduleAutomaticDisplayAnswer()
+        if (!handsFreeVoiceReviewEnabled()) {
+            launchCatchingTask {
+                if (!automaticAnswerShouldWaitForMedia()) {
+                    automaticAnswer.scheduleAutomaticDisplayAnswer()
+                }
             }
         }
         updateCard(content)
@@ -1373,10 +1513,14 @@ abstract class AbstractFlashcardViewer :
             "AbstractFlashcardViewer:: Question successfully shown for card id %d",
             currentCard!!.id,
         )
+        startHandsFreeReviewForCurrentCard()
     }
 
     @VisibleForTesting(otherwise = VisibleForTesting.PROTECTED)
     open fun displayCardAnswer() {
+        if (!handsFreeShowingCorrection) {
+            handsFreeReviewer?.cancelCurrentCard()
+        }
         // #7294 Required in case the animation end action does not fire:
         actualHideEaseButtons()
         Timber.d("displayCardAnswer()")
@@ -1407,9 +1551,11 @@ abstract class AbstractFlashcardViewer :
         isSelecting = false
         val answerContent = cardRenderContext!!.renderCard(getColUnsafe, currentCard!!, SingleCardSide.BACK)
         automaticAnswer.onDisplayAnswer()
-        launchCatchingTask {
-            if (!automaticAnswerShouldWaitForMedia()) {
-                automaticAnswer.scheduleAutomaticDisplayQuestion()
+        if (!handsFreeVoiceReviewEnabled()) {
+            launchCatchingTask {
+                if (!automaticAnswerShouldWaitForMedia()) {
+                    automaticAnswer.scheduleAutomaticDisplayQuestion()
+                }
             }
         }
         updateCard(answerContent)
@@ -1485,6 +1631,9 @@ abstract class AbstractFlashcardViewer :
      */
     @NeedsTest("media is not played if opExecuted occurs when viewer is in the background")
     protected open fun playMedia(doMediaReplay: Boolean) {
+        // In hands-free mode the local voice reviewer owns prompt/correction speech.
+        // Avoid overlapping it with card autoplay; explicit manual replay still works.
+        if (!doMediaReplay && handsFreeVoiceReviewEnabled()) return
         // this can occur due to OpChanges when the viewer is on another screen
         if (!this.lifecycle.currentState.isAtLeast(RESUMED)) {
             Timber.w("media is not played as the activity is inactive")
@@ -2899,3 +3048,5 @@ abstract class AbstractFlashcardViewer :
         }
     }
 }
+
+private const val PREF_HANDS_FREE_VOICE_REVIEW = "hands_free_voice_review"

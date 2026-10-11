@@ -59,8 +59,37 @@ class AdvancedSettingsFragment : SettingsFragment() {
             }
         }
 
+    private val handsFreeMicrophonePermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
+            if (isGranted) {
+                findPreference<SwitchPreferenceCompat>("hands_free_voice_review")?.isChecked = true
+            } else {
+                android.widget.Toast.makeText(
+                    requireContext(),
+                    "Microphone permission is required for hands-free Japanese review.",
+                    android.widget.Toast.LENGTH_LONG,
+                ).show()
+            }
+        }
+
     override fun initSubscreen() {
         removeUnnecessaryAdvancedPrefs()
+
+        // Hands-free review uses the local microphone recognizer. Request permission
+        // only when the user explicitly enables the feature.
+        findPreference<SwitchPreferenceCompat>("hands_free_voice_review")?.apply {
+            isChecked = isChecked && Permissions.canRecordAudio(requireContext())
+            setOnPreferenceChangeListener { _, newValue ->
+                if (newValue !is Boolean) {
+                    false
+                } else if (!newValue || Permissions.canRecordAudio(requireContext())) {
+                    true
+                } else {
+                    handsFreeMicrophonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                    false
+                }
+            }
+        }
 
         // Check that input is valid before committing change in the collection path
         requirePreference<ExternalDirectorySelectionPreference>(CollectionHelper.PREF_COLLECTION_PATH).apply {
