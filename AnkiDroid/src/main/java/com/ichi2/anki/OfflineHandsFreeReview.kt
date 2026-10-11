@@ -70,6 +70,7 @@ internal class OfflineHandsFreeReview(
     private val resultParts = mutableListOf<String>()
     private var finalizing = false
     private var pendingStop: Runnable? = null
+    private var hardTimeout: Runnable? = null
     private var correctionAction: (() -> Unit)? = null
 
     init {
@@ -201,6 +202,8 @@ internal class OfflineHandsFreeReview(
         startJob = null
         pendingStop?.let(mainHandler::removeCallbacks)
         pendingStop = null
+        hardTimeout?.let(mainHandler::removeCallbacks)
+        hardTimeout = null
         correctionAction = null
         tts?.stop()
         stopRecognition(cancel = true)
@@ -329,7 +332,12 @@ internal class OfflineHandsFreeReview(
                 resultParts.clear()
                 finalizing = false
                 report("Hands-free: listening…")
-                newService.startListening(listenerFor(requestGeneration), MAX_LISTENING_MS)
+                newService.startListening(listenerFor(requestGeneration))
+                val timeout = Runnable {
+                    if (isCurrent(requestGeneration)) stopForFinalResult(requestGeneration)
+                }
+                hardTimeout = timeout
+                mainHandler.postDelayed(timeout, MAX_LISTENING_MS.toLong())
             } catch (e: Exception) {
                 Timber.e(e, "Unable to start offline recognition")
                 if (isCurrent(requestGeneration)) {
@@ -403,6 +411,8 @@ internal class OfflineHandsFreeReview(
         recognizer = null
         pendingStop?.let(mainHandler::removeCallbacks)
         pendingStop = null
+        hardTimeout?.let(mainHandler::removeCallbacks)
+        hardTimeout = null
         releaseRecognition(service, recognizerToClose)
 
         if (!isCurrent(requestGeneration) || !active) return
@@ -425,6 +435,10 @@ internal class OfflineHandsFreeReview(
         val recognizerToClose = recognizer
         speechService = null
         recognizer = null
+        pendingStop?.let(mainHandler::removeCallbacks)
+        pendingStop = null
+        hardTimeout?.let(mainHandler::removeCallbacks)
+        hardTimeout = null
         releaseRecognition(service, recognizerToClose)
         if (!isCurrent(requestGeneration) || !active) return
         val transcript = resultParts.joinToString(" ").trim()
@@ -446,6 +460,10 @@ internal class OfflineHandsFreeReview(
         val recognizerToClose = recognizer
         speechService = null
         recognizer = null
+        pendingStop?.let(mainHandler::removeCallbacks)
+        pendingStop = null
+        hardTimeout?.let(mainHandler::removeCallbacks)
+        hardTimeout = null
         releaseRecognition(service, recognizerToClose, cancel = true)
         Timber.w(exception, "Vosk recognition failed")
         if (!isCurrent(requestGeneration) || !active) return
@@ -595,7 +613,7 @@ internal class OfflineHandsFreeReview(
         private const val MODEL_ARCHIVE = "vosk-model-small-ja-0.22.zip"
         private const val MODEL_URL = "https://alphacephei.com/vosk/models/vosk-model-small-ja-0.22.zip"
         private const val SAMPLE_RATE = 16_000.0f
-        private const val MAX_LISTENING_MS = 15_000
+        private const val MAX_LISTENING_MS = 15_000L
         private const val END_OF_UTTERANCE_MS = 750L
         private const val CORRECTION_FALLBACK_DELAY_MS = 2_200L
         private const val NETWORK_CONNECT_TIMEOUT_MS = 20_000
