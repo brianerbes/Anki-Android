@@ -696,7 +696,7 @@ internal object JapaneseSpeechTextNormalizer {
         val value = Normalizer.normalize(text, Normalizer.Form.NFKC).trim()
         if (value.isBlank()) return value
         val lower = value.lowercase(Locale.ROOT)
-        if (romajiPattern.matches(lower)) return romanjiToHiragana(lower)
+        if (romajiPattern.matches(lower)) return romajiToHiragana(lower)
         if (!kanjiPattern.containsMatchIn(value)) return katakanaToHiragana(value)
 
         return runCatching {
@@ -727,7 +727,7 @@ internal object JapaneseSpeechTextNormalizer {
             }
         }
 
-    private fun romanjiToHiragana(text: String): String {
+    private fun romajiToHiragana(text: String): String {
         val input = text.lowercase(Locale.ROOT)
         val output = StringBuilder()
         var index = 0
