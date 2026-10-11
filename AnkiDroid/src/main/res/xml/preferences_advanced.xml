@@ -100,6 +100,11 @@
         android:key="@string/tts_key"
         android:summary="@string/tts_summ"
         android:title="@string/tts" />
+        <SwitchPreferenceCompat
+            android:defaultValue="false"
+            android:key="hands_free_voice_review"
+            android:summary="@string/hands_free_voice_review_summary"
+            android:title="@string/hands_free_voice_review_title" />
         <PreferenceCategory
             android:title="@string/pref_cat_security" >
             <SwitchPreferenceCompat
