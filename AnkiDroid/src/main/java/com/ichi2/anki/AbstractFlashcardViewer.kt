@@ -1415,7 +1415,8 @@ abstract class AbstractFlashcardViewer :
 
         if (acceptedAnswers.isEmpty()) {
             showHandsFreeStatus(
-                "Could not find a Japanese answer field. Add a VoiceAccepted field or keep the Japanese answer in a note field.",
+                "Could not find a Japanese answer field. " +
+                    "Add a VoiceAccepted field or keep the Japanese answer in a note field.",
             )
             return
         }
