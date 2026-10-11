@@ -610,7 +610,9 @@ internal class OfflineHandsFreeReview(
                 val extracted = File(staging, MODEL_NAME)
                 check(isValidModel(extracted)) { "Downloaded archive did not contain a valid Japanese model" }
                 destination.deleteRecursively()
-                extracted.copyRecursively(destination, overwrite = true)
+                if (!extracted.renameTo(destination)) {
+                    extracted.copyRecursively(destination, overwrite = true)
+                }
                 check(isValidModel(destination)) { "Could not install the Japanese model" }
             } finally {
                 connection?.disconnect()
