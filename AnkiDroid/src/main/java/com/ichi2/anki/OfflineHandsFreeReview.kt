@@ -386,8 +386,7 @@ internal class OfflineHandsFreeReview(
         recognizer = null
         pendingStop?.let(mainHandler::removeCallbacks)
         pendingStop = null
-        runCatching { service?.shutdown() }
-        runCatching { recognizerToClose?.close() }
+        releaseRecognition(service, recognizerToClose)
 
         if (!isCurrent(requestGeneration) || !active) return
         val finalText = hypothesisText(hypothesis)
@@ -409,8 +408,7 @@ internal class OfflineHandsFreeReview(
         val recognizerToClose = recognizer
         speechService = null
         recognizer = null
-        runCatching { service?.shutdown() }
-        runCatching { recognizerToClose?.close() }
+        releaseRecognition(service, recognizerToClose)
         if (!isCurrent(requestGeneration) || !active) return
         val transcript = resultParts.joinToString(" ").trim()
         resultParts.clear()
@@ -431,8 +429,7 @@ internal class OfflineHandsFreeReview(
         val recognizerToClose = recognizer
         speechService = null
         recognizer = null
-        runCatching { service?.shutdown() }
-        runCatching { recognizerToClose?.close() }
+        releaseRecognition(service, recognizerToClose, cancel = true)
         Timber.w(exception, "Vosk recognition failed")
         if (!isCurrent(requestGeneration) || !active) return
         active = false
@@ -444,11 +441,28 @@ internal class OfflineHandsFreeReview(
         val recognizerToClose = recognizer
         speechService = null
         recognizer = null
+        releaseRecognition(service, recognizerToClose, cancel = cancel, stop = !cancel)
+    }
+
+    /**
+     * SpeechService.stop()/cancel() joins its recording thread. Run teardown on the
+     * dedicated executor rather than the UI thread; callbacks may arrive while stop()
+     * is still completing, so this also serializes teardown after the stop operation.
+     */
+    private fun releaseRecognition(
+        service: SpeechService?,
+        recognizerToClose: Recognizer?,
+        cancel: Boolean = false,
+        stop: Boolean = false,
+    ) {
         if (service == null && recognizerToClose == null) return
         stopExecutor.execute {
             if (service != null) {
                 runCatching {
-                    if (cancel) service.cancel() else service.stop()
+                    when {
+                        cancel -> service.cancel()
+                        stop -> service.stop()
+                    }
                 }
                 runCatching { service.shutdown() }
             }
