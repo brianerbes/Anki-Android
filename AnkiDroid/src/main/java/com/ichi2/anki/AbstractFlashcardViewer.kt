@@ -1634,6 +1634,9 @@ abstract class AbstractFlashcardViewer :
      */
     @NeedsTest("media is not played if opExecuted occurs when viewer is in the background")
     protected open fun playMedia(doMediaReplay: Boolean) {
+        // In hands-free mode the local voice reviewer owns prompt/correction speech.
+        // Avoid overlapping it with card autoplay; explicit manual replay still works.
+        if (!doMediaReplay && handsFreeVoiceReviewEnabled()) return
         // this can occur due to OpChanges when the viewer is on another screen
         if (!this.lifecycle.currentState.isAtLeast(RESUMED)) {
             Timber.w("media is not played as the activity is inactive")
