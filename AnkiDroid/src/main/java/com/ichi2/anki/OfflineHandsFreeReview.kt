@@ -17,8 +17,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -135,7 +133,7 @@ internal class OfflineHandsFreeReview(
         cancelCurrentCard()
         val requestGeneration = generation
         activeCardId = cardId
-        acceptedAnswers = expected.map(String::trim).filter(String::isNotEmpty).distinct()
+        acceptedAnswers = expected.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
         active = true
 
         if (prompt.isBlank()) {
@@ -465,12 +463,12 @@ internal class OfflineHandsFreeReview(
                         input.copyTo(output, DEFAULT_BUFFER_SIZE)
                     }
                 }
-                val stagingCanonical = staging.canonicalFile
+                val stagingCanonicalPath = staging.canonicalPath + File.separator
                 ZipInputStream(BufferedInputStream(FileInputStream(zipFile))).use { zip ->
                     while (true) {
                         val entry = zip.nextEntry ?: break
                         val target = File(staging, entry.name).canonicalFile
-                        require(target.toPath().startsWith(stagingCanonical.toPath())) {
+                        require(target.path.startsWith(stagingCanonicalPath)) {
                             "Unsafe path in model archive"
                         }
                         if (entry.isDirectory) {
