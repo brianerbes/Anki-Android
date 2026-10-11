@@ -135,7 +135,7 @@ internal class OfflineHandsFreeReview(
         cancelCurrentCard()
         val requestGeneration = generation
         activeCardId = cardId
-        acceptedAnswers = expected.map(::normalizeForComparison).filter(String::isNotEmpty).distinct()
+        acceptedAnswers = expected.map(String::trim).filter(String::isNotEmpty).distinct()
         active = true
 
         if (prompt.isBlank()) {
@@ -227,8 +227,14 @@ internal class OfflineHandsFreeReview(
             "handsfree-correction-$requestGeneration",
         )
         if (result == TextToSpeech.ERROR) {
-            correctionAction = null
-            report("Could not speak the answer. The card remains available for manual grading.")
+            report("Could not speak the answer. Showing it briefly before marking the card Again.")
+            mainHandler.postDelayed({
+                if (isCurrent(requestGeneration)) {
+                    val action = correctionAction
+                    correctionAction = null
+                    action?.invoke()
+                }
+            }, CORRECTION_FALLBACK_DELAY_MS)
         }
     }
 
@@ -238,9 +244,10 @@ internal class OfflineHandsFreeReview(
         tts?.stop()
         tts?.shutdown()
         tts = null
-        runCatching { voskModel?.close() }
+        val modelToClose = voskModel
         voskModel = null
-        stopExecutor.shutdownNow()
+        stopExecutor.execute { runCatching { modelToClose?.close() } }
+        stopExecutor.shutdown()
     }
 
     private fun speakQuestion(prompt: String, requestGeneration: Long) {
