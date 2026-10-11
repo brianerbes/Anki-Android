@@ -257,14 +257,8 @@ internal class OfflineHandsFreeReview(
         val voice = japaneseVoice
         val textToSpeak = JapaneseSpeechTextNormalizer.toHiraganaReading(text)
         if (engine == null || voice == null || text.isBlank()) {
-            report("Answer: $text")
-            mainHandler.postDelayed({
-                if (isCurrent(requestGeneration)) {
-                    val action = correctionAction
-                    correctionAction = null
-                    action?.invoke()
-                }
-            }, CORRECTION_FALLBACK_DELAY_MS)
+            correctionAction = null
+            report("Offline Japanese correction speech is unavailable. The answer is shown; grade this card manually.")
             return
         }
         engine.voice = voice
@@ -275,14 +269,8 @@ internal class OfflineHandsFreeReview(
             "handsfree-correction-$requestGeneration",
         )
         if (result == TextToSpeech.ERROR) {
-            report("Could not speak the answer. Showing it briefly before marking the card Again.")
-            mainHandler.postDelayed({
-                if (isCurrent(requestGeneration)) {
-                    val action = correctionAction
-                    correctionAction = null
-                    action?.invoke()
-                }
-            }, CORRECTION_FALLBACK_DELAY_MS)
+            correctionAction = null
+            report("Could not speak the correction. The answer remains displayed for manual grading.")
         }
     }
 
@@ -312,8 +300,8 @@ internal class OfflineHandsFreeReview(
                     )
                 }
                 id.startsWith("handsfree-correction-") -> {
-                    report("Could not read the correction aloud. The answer is shown; grading Again.")
-                    runCorrectionActionAfterDelay(expectedGeneration, CORRECTION_FALLBACK_DELAY_MS)
+                    correctionAction = null
+                    report("Could not read the correction aloud. The answer remains displayed for manual grading.")
                 }
                 id.startsWith("handsfree-feedback-") -> {
                     report("Could not speak confirmation; grading the card.")
