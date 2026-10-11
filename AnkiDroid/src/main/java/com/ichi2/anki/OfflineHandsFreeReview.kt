@@ -799,7 +799,12 @@ internal object JapaneseSpeechTextNormalizer {
                 index++
                 continue
             }
-            if (current == 'n' && index + 1 < input.length) {
+            if (current == 'n') {
+                if (index + 1 >= input.length) {
+                    output.append('ん')
+                    index++
+                    continue
+                }
                 val next = input[index + 1]
                 if (next == 'n') {
                     output.append('ん')
