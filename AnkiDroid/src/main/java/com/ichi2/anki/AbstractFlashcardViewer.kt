@@ -1489,9 +1489,11 @@ abstract class AbstractFlashcardViewer :
         }
         val content = cardRenderContext!!.renderCard(getColUnsafe, currentCard!!, SingleCardSide.FRONT)
         automaticAnswer.onDisplayQuestion()
-        launchCatchingTask {
-            if (!automaticAnswerShouldWaitForMedia()) {
-                automaticAnswer.scheduleAutomaticDisplayAnswer()
+        if (!handsFreeVoiceReviewEnabled()) {
+            launchCatchingTask {
+                if (!automaticAnswerShouldWaitForMedia()) {
+                    automaticAnswer.scheduleAutomaticDisplayAnswer()
+                }
             }
         }
         updateCard(content)
@@ -1539,9 +1541,11 @@ abstract class AbstractFlashcardViewer :
         isSelecting = false
         val answerContent = cardRenderContext!!.renderCard(getColUnsafe, currentCard!!, SingleCardSide.BACK)
         automaticAnswer.onDisplayAnswer()
-        launchCatchingTask {
-            if (!automaticAnswerShouldWaitForMedia()) {
-                automaticAnswer.scheduleAutomaticDisplayQuestion()
+        if (!handsFreeVoiceReviewEnabled()) {
+            launchCatchingTask {
+                if (!automaticAnswerShouldWaitForMedia()) {
+                    automaticAnswer.scheduleAutomaticDisplayQuestion()
+                }
             }
         }
         updateCard(answerContent)
