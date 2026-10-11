@@ -115,11 +115,11 @@ internal class OfflineHandsFreeReview(
 
                 @Deprecated("Deprecated by Android")
                 override fun onError(utteranceId: String?) {
-                    mainHandler.post { report("Offline text-to-speech failed; use the normal review controls.") }
+                    handleTtsError(utteranceId)
                 }
 
                 override fun onError(utteranceId: String?, errorCode: Int) {
-                    mainHandler.post { report("Offline text-to-speech failed; use the normal review controls.") }
+                    handleTtsError(utteranceId)
                 }
             },
         )
@@ -246,6 +246,31 @@ internal class OfflineHandsFreeReview(
         voskModel = null
         stopExecutor.execute { runCatching { modelToClose?.close() } }
         stopExecutor.shutdown()
+    }
+
+    private fun handleTtsError(utteranceId: String?) {
+        val id = utteranceId ?: return
+        val expectedGeneration = id.substringAfterLast('-').toLongOrNull() ?: return
+        mainHandler.post {
+            if (!isCurrent(expectedGeneration)) return@post
+            when {
+                id.startsWith("handsfree-question-") -> {
+                    active = false
+                    report("Could not read the prompt. Check that an offline Spanish TTS voice is installed; no grade was assigned.")
+                }
+                id.startsWith("handsfree-correction-") -> {
+                    report("Could not read the correction aloud. The answer is shown; grading Again.")
+                    mainHandler.postDelayed({
+                        if (isCurrent(expectedGeneration)) {
+                            val action = correctionAction
+                            correctionAction = null
+                            action?.invoke()
+                        }
+                    }, CORRECTION_FALLBACK_DELAY_MS)
+                }
+                else -> report("Offline text-to-speech failed.")
+            }
+        }
     }
 
     private fun speakQuestion(prompt: String, requestGeneration: Long) {
@@ -387,8 +412,15 @@ internal class OfflineHandsFreeReview(
         runCatching { service?.shutdown() }
         runCatching { recognizerToClose?.close() }
         if (!isCurrent(requestGeneration) || !active) return
-        active = false
-        report("No complete answer was recognized. The card was not graded.")
+        val transcript = resultParts.joinToString(" ").trim()
+        resultParts.clear()
+        if (transcript.isBlank()) {
+            active = false
+            report("No complete answer was recognized. The card was not graded.")
+        } else {
+            report("Recognized: $transcript")
+            onTranscript(activeCardId, transcript, acceptedAnswers)
+        }
     }
 
     private fun handleRecognitionError(
