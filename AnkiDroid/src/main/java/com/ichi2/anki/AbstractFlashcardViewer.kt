@@ -1403,6 +1403,7 @@ abstract class AbstractFlashcardViewer :
                         values += Regex("[（(]([^）)]+)[）)]")
                             .findAll(plain)
                             .map { it.groupValues[1] }
+                            .toList()
                         values.flatMap { it.split(Regex("[|;；\\r\\n,，、]+")) }
                     }.map { it.trim().trim('(', ')', '[', ']', '（', '）') }
                     .filter { candidate ->
