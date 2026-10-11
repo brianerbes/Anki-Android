@@ -27,7 +27,6 @@ import org.vosk.Model
 import org.vosk.Recognizer
 import org.vosk.android.RecognitionListener
 import org.vosk.android.SpeechService
-import com.atilika.kuromoji.ipadic.Tokenizer
 import timber.log.Timber
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
@@ -617,7 +616,6 @@ internal class OfflineHandsFreeReview(
         }
     }
 }
-
 
 /**
  * Converts kana/kanji readings and Hepburn-style romaji to the same hiragana
