@@ -26,6 +26,7 @@ import org.vosk.Model
 import org.vosk.Recognizer
 import org.vosk.android.RecognitionListener
 import org.vosk.android.SpeechService
+import com.atilika.kuromoji.ipadic.Tokenizer
 import timber.log.Timber
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
@@ -218,6 +219,7 @@ internal class OfflineHandsFreeReview(
         correctionAction = onDone
         val engine = tts
         val voice = japaneseVoice
+        val textToSpeak = JapaneseSpeechTextNormalizer.toHiraganaReading(text)
         if (engine == null || voice == null || text.isBlank()) {
             report("Answer: $text")
             mainHandler.postDelayed({
@@ -231,7 +233,7 @@ internal class OfflineHandsFreeReview(
         }
         engine.voice = voice
         val result = engine.speak(
-            text,
+            textToSpeak,
             TextToSpeech.QUEUE_FLUSH,
             Bundle(),
             "handsfree-correction-$requestGeneration",
@@ -596,18 +598,174 @@ internal class OfflineHandsFreeReview(
         private const val NETWORK_READ_TIMEOUT_MS = 60_000
 
         internal fun normalizeForComparison(text: String): String =
-            Normalizer
-                .normalize(text, Normalizer.Form.NFKC)
-                .lowercase(Locale.ROOT)
-                .replace(Regex("[\\p{P}\\p{S}\\s　]+"), "")
+            JapaneseSpeechTextNormalizer.normalizeBasic(text)
 
         internal fun matchesAnswer(
             transcript: String,
             acceptedAnswers: List<String>,
         ): Boolean {
-            val normalizedTranscript = normalizeForComparison(transcript)
-            if (normalizedTranscript.isBlank()) return false
-            return acceptedAnswers.any { normalizeForComparison(it) == normalizedTranscript }
+            val transcriptForms = JapaneseSpeechTextNormalizer.comparisonForms(transcript)
+            if (transcriptForms.isEmpty()) return false
+            return acceptedAnswers.any { answer ->
+                JapaneseSpeechTextNormalizer.comparisonForms(answer).any(transcriptForms::contains)
+            }
         }
+    }
+}
+
+
+/**
+ * Converts kana/kanji readings and Hepburn-style romaji to the same hiragana
+ * representation. This is a local dictionary/transliteration library, not an LLM.
+ */
+internal object JapaneseSpeechTextNormalizer {
+    private val tokenizer: Tokenizer by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { Tokenizer() }
+    private val kanjiPattern = Regex("[一-龯々〆〤]")
+    private val romajiPattern = Regex("^[a-z]+$")
+    private val syllables: Map<String, String> =
+        mapOf(
+            "kya" to "きゃ", "kyu" to "きゅ", "kyo" to "きょ",
+            "gya" to "ぎゃ", "gyu" to "ぎゅ", "gyo" to "ぎょ",
+            "sha" to "しゃ", "shu" to "しゅ", "sho" to "しょ",
+            "sya" to "しゃ", "syu" to "しゅ", "syo" to "しょ",
+            "ja" to "じゃ", "ju" to "じゅ", "jo" to "じょ",
+            "jya" to "じゃ", "jyu" to "じゅ", "jyo" to "じょ",
+            "zya" to "じゃ", "zyu" to "じゅ", "zyo" to "じょ",
+            "cha" to "ちゃ", "chu" to "ちゅ", "cho" to "ちょ",
+            "tya" to "ちゃ", "tyu" to "ちゅ", "tyo" to "ちょ",
+            "nya" to "にゃ", "nyu" to "にゅ", "nyo" to "にょ",
+            "hya" to "ひゃ", "hyu" to "ひゅ", "hyo" to "ひょ",
+            "bya" to "びゃ", "byu" to "びゅ", "byo" to "びょ",
+            "pya" to "ぴゃ", "pyu" to "ぴゅ", "pyo" to "ぴょ",
+            "mya" to "みゃ", "myu" to "みゅ", "myo" to "みょ",
+            "rya" to "りゃ", "ryu" to "りゅ", "ryo" to "りょ",
+            "fa" to "ふぁ", "fi" to "ふぃ", "fe" to "ふぇ", "fo" to "ふぉ",
+            "wi" to "うぃ", "we" to "うぇ", "wo" to "を",
+            "tsu" to "つ", "shi" to "し", "chi" to "ち", "fu" to "ふ",
+            "ji" to "じ",
+            "ka" to "か", "ki" to "き", "ku" to "く", "ke" to "け", "ko" to "こ",
+            "ga" to "が", "gi" to "ぎ", "gu" to "ぐ", "ge" to "げ", "go" to "ご",
+            "sa" to "さ", "si" to "し", "su" to "す", "se" to "せ", "so" to "そ",
+            "za" to "ざ", "zi" to "じ", "zu" to "ず", "ze" to "ぜ", "zo" to "ぞ",
+            "ta" to "た", "ti" to "ち", "tu" to "つ", "te" to "て", "to" to "と",
+            "da" to "だ", "di" to "ぢ", "du" to "づ", "de" to "で", "do" to "ど",
+            "na" to "な", "ni" to "に", "nu" to "ぬ", "ne" to "ね", "no" to "の",
+            "ha" to "は", "hi" to "ひ", "hu" to "ふ", "he" to "へ", "ho" to "ほ",
+            "ba" to "ば", "bi" to "び", "bu" to "ぶ", "be" to "べ", "bo" to "ぼ",
+            "pa" to "ぱ", "pi" to "ぴ", "pu" to "ぷ", "pe" to "ぺ", "po" to "ぽ",
+            "ma" to "ま", "mi" to "み", "mu" to "む", "me" to "め", "mo" to "も",
+            "ya" to "や", "yu" to "ゆ", "yo" to "よ",
+            "ra" to "ら", "ri" to "り", "ru" to "る", "re" to "れ", "ro" to "ろ",
+            "wa" to "わ",
+            "a" to "あ", "i" to "い", "u" to "う", "e" to "え", "o" to "お",
+            "la" to "ぁ", "li" to "ぃ", "lu" to "ぅ", "le" to "ぇ", "lo" to "ぉ",
+            "xa" to "ぁ", "xi" to "ぃ", "xu" to "ぅ", "xe" to "ぇ", "xo" to "ぉ",
+            "lya" to "ゃ", "lyu" to "ゅ", "lyo" to "ょ",
+            "xya" to "ゃ", "xyu" to "ゅ", "xyo" to "ょ",
+            "ltsu" to "っ", "xtsu" to "っ",
+        )
+
+    fun normalizeBasic(text: String): String =
+        Normalizer
+            .normalize(text, Normalizer.Form.NFKC)
+            .lowercase(Locale.ROOT)
+            .replace(Regex("[\\p{P}\\p{S}\\s　]+"), "")
+
+    fun comparisonForms(text: String): Set<String> {
+        val basic = normalizeBasic(text)
+        if (basic.isBlank()) return emptySet()
+        val forms = linkedSetOf(basic)
+        val reading = toHiraganaReading(text)
+        val normalizedReading = normalizeBasic(reading)
+        if (normalizedReading.isNotBlank()) forms += normalizedReading
+        if (romajiPattern.matches(basic)) {
+            val kana = normalizeBasic(romajiToHiragana(basic))
+            if (kana.isNotBlank()) forms += kana
+        }
+        return forms
+    }
+
+    fun toHiraganaReading(text: String): String {
+        val value = Normalizer.normalize(text, Normalizer.Form.NFKC).trim()
+        if (value.isBlank()) return value
+        val lower = value.lowercase(Locale.ROOT)
+        if (romajiPattern.matches(lower)) return romanjiToHiragana(lower)
+        if (!kanjiPattern.containsMatchIn(value)) return katakanaToHiragana(value)
+
+        return runCatching {
+            tokenizer.tokenize(value).joinToString(separator = "") { token ->
+                val reading = token.reading
+                if (reading.isNotBlank() && reading != "*") {
+                    katakanaToHiragana(reading)
+                } else {
+                    katakanaToHiragana(token.surface)
+                }
+            }
+        }.getOrElse {
+            Timber.w(it, "Could not convert kanji to reading; comparing original normalized text")
+            value
+        }
+    }
+
+    private fun katakanaToHiragana(text: String): String =
+        buildString(text.length) {
+            for (char in text) {
+                append(
+                    if (char.code in 0x30A1..0x30F6) {
+                        (char.code - 0x60).toChar()
+                    } else {
+                        char
+                    },
+                )
+            }
+        }
+
+    private fun romanjiToHiragana(text: String): String {
+        val input = text.lowercase(Locale.ROOT)
+        val output = StringBuilder()
+        var index = 0
+        val keys = syllables.keys.sortedByDescending(String::length)
+
+        while (index < input.length) {
+            val current = input[index]
+            if (current == '-' || current == 'ー') {
+                output.append('ー')
+                index++
+                continue
+            }
+            if (current == 'n' && index + 1 < input.length) {
+                val next = input[index + 1]
+                if (next == 'n') {
+                    output.append('ん')
+                    index++
+                    continue
+                }
+                if (next !in "aiueoy" && next.isLetter()) {
+                    output.append('ん')
+                    index++
+                    continue
+                }
+            } else if (
+                index + 1 < input.length &&
+                current == input[index + 1] &&
+                current in "bcdfghjklmpqrstvwxyz" &&
+                current != 'n'
+            ) {
+                output.append('っ')
+                index++
+                continue
+            }
+
+            val key = keys.firstOrNull { input.startsWith(it, index) }
+            if (key != null) {
+                output.append(syllables.getValue(key))
+                index += key.length
+            } else {
+                output.append(current)
+                index++
+            }
+        }
+
+        return output.toString()
     }
 }
