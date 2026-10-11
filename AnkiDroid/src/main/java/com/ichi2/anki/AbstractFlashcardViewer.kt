@@ -8,12 +8,12 @@
 // TODO: implement own menu? http://www.codeproject.com/Articles/173121/Android-Menus-My-Way
 package com.ichi2.anki
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
-import android.Manifest
 import android.content.Context
-import android.content.pm.PackageManager
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.SharedPreferences
 import android.content.res.Configuration
 import android.graphics.Bitmap
@@ -49,9 +49,9 @@ import android.webkit.WebView
 import android.webkit.WebView.HitTestResult
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
-import android.widget.Toast
 import android.widget.LinearLayout
 import android.widget.RelativeLayout
+import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.ActivityResult
 import androidx.activity.result.ActivityResultCallback
@@ -1390,7 +1390,7 @@ abstract class AbstractFlashcardViewer :
                 explicitVoiceAnswer
                     .split(Regex("[|;；\\r\\n]+"))
                     .map { stripHTMLAndSpecialFields(it).trim() }
-                    .filter(String::isNotEmpty)
+                    .filter { it.isNotEmpty() }
             } else {
                 val japaneseText = Regex("[ぁ-ゖァ-ヺ一-龯々〆〤]")
                 namedFields
