@@ -10,7 +10,9 @@ package com.ichi2.anki
 
 import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.res.Configuration
@@ -47,6 +49,7 @@ import android.webkit.WebView
 import android.webkit.WebView.HitTestResult
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
+import android.widget.Toast
 import android.widget.LinearLayout
 import android.widget.RelativeLayout
 import androidx.activity.OnBackPressedCallback
@@ -66,6 +69,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.children
 import androidx.core.view.isVisible
 import androidx.lifecycle.Lifecycle.State.RESUMED
+import androidx.preference.PreferenceManager
 import anki.collection.OpChanges
 import anki.scheduler.CardAnswer.Rating
 import com.drakeet.drawer.FullDraggableContainer
@@ -190,6 +194,9 @@ abstract class AbstractFlashcardViewer :
     PostRequestHandler {
     private var ttsInitialized = false
     private var replayOnTtsInit = false
+    private var handsFreeReviewer: OfflineHandsFreeReview? = null
+    private var handsFreeShowingCorrection = false
+    private var handsFreeApplyingAutomaticRating = false
 
     @VisibleForTesting
     val jsApi by lazy { AnkiDroidJsAPI(this) }
@@ -605,6 +612,8 @@ abstract class AbstractFlashcardViewer :
 
     // Saves deck each time Reviewer activity loses focus
     override fun onPause() {
+        handsFreeReviewer?.cancelCurrentCard()
+        handsFreeShowingCorrection = false
         super.onPause()
         gestureDetectorImpl.stopShakeDetector()
         if (this::cardMediaPlayer.isInitialized) {
@@ -655,6 +664,8 @@ abstract class AbstractFlashcardViewer :
     }
 
     override fun onDestroy() {
+        handsFreeReviewer?.close()
+        handsFreeReviewer = null
         super.onDestroy()
         if (this::server.isInitialized) {
             server.stop()
@@ -859,7 +870,11 @@ abstract class AbstractFlashcardViewer :
         }
     }
 
-    open fun answerCard(rating: Rating) =
+    open fun answerCard(rating: Rating) {
+        if (!handsFreeApplyingAutomaticRating) {
+            handsFreeReviewer?.cancelCurrentCard()
+            handsFreeShowingCorrection = false
+        }
         preventSimultaneousExecutions(ANSWER_CARD) {
             launchCatchingTask {
                 if (inAnswer) {
@@ -879,6 +894,7 @@ abstract class AbstractFlashcardViewer :
                 updateCardAndRedraw()
             }
         }
+    }
 
     open suspend fun answerCardInner(rating: Rating) {
         // Legacy tests assume they can call answerCard() even outside of Reviewer
@@ -1344,6 +1360,117 @@ abstract class AbstractFlashcardViewer :
         }
     }
 
+    private fun handsFreeVoiceReviewEnabled(): Boolean =
+        PreferenceManager.getDefaultSharedPreferences(this)
+            .getBoolean(PREF_HANDS_FREE_VOICE_REVIEW, false)
+
+    private fun startHandsFreeReviewForCurrentCard() {
+        if (!handsFreeVoiceReviewEnabled()) {
+            handsFreeReviewer?.cancelCurrentCard()
+            return
+        }
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            showHandsFreeStatus("Microphone permission is required. Enable it in Android app settings.")
+            return
+        }
+        val card = currentCard ?: return
+        val collection = getColUnsafe
+        val prompt = stripHTMLAndSpecialFields(card.question(collection, true)).trim()
+        val note = card.note(collection, true)
+        val namedFields = note.notetype.fieldsNames.zip(note.fields)
+        val promptNormalized = OfflineHandsFreeReview.normalizeForComparison(prompt)
+
+        val explicitVoiceAnswer =
+            namedFields.firstOrNull { (name, _) ->
+                name.equals("VoiceAccepted", ignoreCase = true) ||
+                    name.equals("VoiceAnswers", ignoreCase = true)
+            }?.second
+        val acceptedAnswers =
+            if (!explicitVoiceAnswer.isNullOrBlank()) {
+                explicitVoiceAnswer
+                    .split(Regex("[|;；\\r\\n]+"))
+                    .map { stripHTMLAndSpecialFields(it).trim() }
+                    .filter(String::isNotEmpty)
+            } else {
+                val japaneseText = Regex("[ぁ-ゖァ-ヺ一-龯々〆〤]")
+                namedFields
+                    .filterNot { (name, _) ->
+                        name.equals("VoiceAccepted", ignoreCase = true) ||
+                            name.equals("VoiceAnswers", ignoreCase = true)
+                    }.flatMap { (_, fieldValue) ->
+                        val plain = stripHTMLAndSpecialFields(fieldValue).trim()
+                        val values = mutableListOf(plain)
+                        values += Regex("[（(]([^）)]+)[）)]")
+                            .findAll(plain)
+                            .map { it.groupValues[1] }
+                        values.flatMap { it.split(Regex("[|;；\\r\\n,，、]+")) }
+                    }.map { it.trim().trim('(', ')', '[', ']', '（', '）') }
+                    .filter { candidate ->
+                        candidate.isNotBlank() &&
+                            japaneseText.containsMatchIn(candidate) &&
+                            OfflineHandsFreeReview.normalizeForComparison(candidate) != promptNormalized
+                    }.distinct()
+            }
+
+        if (acceptedAnswers.isEmpty()) {
+            showHandsFreeStatus(
+                "Could not find a Japanese answer field. Add a VoiceAccepted field or keep the Japanese answer in a note field.",
+            )
+            return
+        }
+
+        val reviewer =
+            handsFreeReviewer ?: OfflineHandsFreeReview(
+                context = this,
+                onStatus = ::showHandsFreeStatus,
+                onTranscript = ::onHandsFreeTranscript,
+            ).also { handsFreeReviewer = it }
+        handsFreeShowingCorrection = false
+        reviewer.startCard(card.id, prompt, acceptedAnswers)
+    }
+
+    private fun onHandsFreeTranscript(
+        cardId: Long,
+        transcript: String,
+        acceptedAnswers: List<String>,
+    ) {
+        if (currentCard?.id != cardId || displayAnswer) return
+        if (OfflineHandsFreeReview.matchesAnswer(transcript, acceptedAnswers)) {
+            showHandsFreeStatus("Correct: $transcript")
+            handsFreeApplyingAutomaticRating = true
+            try {
+                answerCard(Rating.GOOD)
+            } finally {
+                handsFreeApplyingAutomaticRating = false
+            }
+            return
+        }
+
+        val expectedAnswer = acceptedAnswers.firstOrNull().orEmpty()
+        handsFreeShowingCorrection = true
+        showHandsFreeStatus("Not matched: $transcript. Answer: $expectedAnswer")
+        displayCardAnswer()
+        handsFreeReviewer?.speakCorrection(cardId, expectedAnswer) {
+            if (currentCard?.id == cardId && displayAnswer) {
+                handsFreeShowingCorrection = false
+                handsFreeApplyingAutomaticRating = true
+                try {
+                    answerCard(Rating.AGAIN)
+                } finally {
+                    handsFreeApplyingAutomaticRating = false
+                }
+            } else {
+                handsFreeShowingCorrection = false
+            }
+        }
+    }
+
+    private fun showHandsFreeStatus(message: String) {
+        runOnUiThread {
+            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+        }
+    }
+
     open fun displayCardQuestion() {
         Timber.d("displayCardQuestion()")
         displayAnswer = false
@@ -1373,10 +1500,14 @@ abstract class AbstractFlashcardViewer :
             "AbstractFlashcardViewer:: Question successfully shown for card id %d",
             currentCard!!.id,
         )
+        startHandsFreeReviewForCurrentCard()
     }
 
     @VisibleForTesting(otherwise = VisibleForTesting.PROTECTED)
     open fun displayCardAnswer() {
+        if (!handsFreeShowingCorrection) {
+            handsFreeReviewer?.cancelCurrentCard()
+        }
         // #7294 Required in case the animation end action does not fire:
         actualHideEaseButtons()
         Timber.d("displayCardAnswer()")
@@ -2899,3 +3030,5 @@ abstract class AbstractFlashcardViewer :
         }
     }
 }
+
+private const val PREF_HANDS_FREE_VOICE_REVIEW = "hands_free_voice_review"
