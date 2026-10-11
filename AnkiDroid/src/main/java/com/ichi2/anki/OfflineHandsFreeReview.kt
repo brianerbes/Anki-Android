@@ -655,7 +655,6 @@ internal class OfflineHandsFreeReview(
         private const val SAMPLE_RATE = 16_000.0f
         private const val MAX_LISTENING_MS = 15_000L
         private const val END_OF_UTTERANCE_MS = 750L
-        private const val CORRECTION_FALLBACK_DELAY_MS = 2_200L
         private const val NETWORK_CONNECT_TIMEOUT_MS = 20_000
         private const val NETWORK_READ_TIMEOUT_MS = 60_000
 
