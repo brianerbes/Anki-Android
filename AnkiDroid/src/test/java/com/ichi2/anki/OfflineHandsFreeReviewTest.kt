@@ -35,6 +35,11 @@ class OfflineHandsFreeReviewTest {
     }
 
     @Test
+    fun romanizedWordsWithTerminalNAreConvertedToKana() {
+        assertEquals("にほん", JapaneseSpeechTextNormalizer.toHiraganaReading("nihon"))
+    }
+
+    @Test
     fun differentAnswerDoesNotMatch() {
         assertFalse(OfflineHandsFreeReview.matchesAnswer("行きません", listOf("行きます", "いきます")))
     }
