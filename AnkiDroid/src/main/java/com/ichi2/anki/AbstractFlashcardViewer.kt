@@ -1442,8 +1442,8 @@ abstract class AbstractFlashcardViewer :
 
     private fun cleanHandsFreeText(text: String): String =
         stripHTMLAndSpecialFields(text)
-            .replace(Regex("""(?i)\\[sound:[^\\]]+\\]"""), " ")
-            .replace(Regex("""\\s+"""), " ")
+            .replace(Regex("""(?i)\[sound:[^\]]+\]"""), " ")
+            .replace(Regex("""\s+"""), " ")
             .trim()
 
     private fun onHandsFreeTranscript(
