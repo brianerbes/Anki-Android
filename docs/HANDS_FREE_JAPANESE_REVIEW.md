@@ -2,7 +2,7 @@
 
 ## What it does
 
-When enabled in **Settings → Advanced → Hands-free Japanese review**, AnkiDroid reads the front of the card using an installed *offline Spanish text-to-speech voice*, records the spoken answer, transcribes Japanese using Vosk on-device, and compares the transcript against accepted answers. A match triggers a local Spanish “Correcto” confirmation and is graded **Good**. A mismatch reveals the expected answer, reads it with an offline Japanese TTS voice if one exists, then grades **Again**. If the prompt cannot be spoken, no answer can be found, recognition errors, or the time limit expires without a completed transcript, the card is not automatically graded. If Vosk finalized a speech segment before the listening timeout, that segment may still be checked.
+When enabled in **Settings → Advanced → Hands-free Japanese review**, AnkiDroid reads the front of the card using an installed *offline Spanish text-to-speech voice*, records the spoken answer, transcribes Japanese using Vosk on-device, and compares the transcript against accepted answers. A match triggers a local Spanish “Correcto” confirmation and is graded **Good**. A mismatch reveals the expected answer and, when an offline Japanese TTS voice is available, reads it aloud before grading **Again**. If correction speech is missing or fails, the answer remains displayed for manual grading rather than advancing silently. If the prompt cannot be spoken, no answer can be found, recognition errors, or the time limit expires without a completed transcript, the card is not automatically graded. If Vosk finalized a speech segment before the listening timeout, that segment may still be checked.
 
 This feature is experimental. Disable it to return to normal manual review at any time.
 
@@ -10,7 +10,7 @@ This feature is experimental. Disable it to return to normal manual review at an
 
 - Speech recognition and comparison run locally. No speech audio or transcription is sent to a server; no LLM is used.
 - On first use, the app downloads the approximately 50 MB `vosk-model-small-ja-0.22` model from the official Vosk model host into app-private storage. That one-time download requires an internet connection. After it is installed, airplane mode can be used for review.
-- Prompt and correction speech require local Spanish and Japanese Text-to-Speech voices. Android's TTS voice list is checked for voices that do not require a network connection. If they are absent, install offline voice data in Android's Text-to-Speech settings.
+- Prompt speech requires a local Spanish Text-to-Speech voice. Spoken correction feedback requires a local Japanese voice. Android's TTS voice list is checked for voices that do not require a network connection. If a voice is missing, install its offline voice data in Android's Text-to-Speech settings. A missing correction voice leaves the card open for manual grading instead of auto-advancing silently.
 - The `RECORD_AUDIO` permission is requested when enabling the feature.
 
 ## Accepted answer fields
