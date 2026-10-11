@@ -15,19 +15,19 @@ This feature is experimental. Disable it to return to normal manual review at an
 
 ## Accepted answer fields
 
-The recognizer expects spoken Japanese and transcribes it to Japanese text (usually kana and/or kanji). It does **not** convert Latin romaji such as `ikimasu` into Japanese text as a language lesson; the speech recognition itself must recognize the spoken word and output Japanese script.
+The recognizer transcribes spoken Japanese to Japanese text, usually kana and/or kanji. Matching normalizes katakana, hiragana, kanji readings, and Hepburn-style romaji locally using a Japanese dictionary/transliterator. A card whose answer field contains only `ikimasu` can therefore match a recognized `いきます` or `行きます`, subject to the speech recognizer's accuracy. This is text-reading normalization, not an LLM or a pronunciation-quality assessment.
 
 The reviewer first checks a note field named `VoiceAccepted` or `VoiceAnswers`. Separate accepted responses with a vertical bar, semicolon, or newline. Example:
 
 ```
-行きます|いきます
+行きます|いきます|ikimasu
 ```
 
-If neither explicit field exists, it falls back to non-empty note fields containing Japanese characters, excluding a field that exactly matches the spoken prompt. This works best with ordinary vocabulary notes where the front contains a Spanish prompt and another field contains the Japanese answer. For cards with complex templates, multiple Japanese fields, or sentences, add an explicit `VoiceAccepted` field to remove ambiguity. Values are compared after Unicode normalization and removal of whitespace and punctuation; matching is exact after this normalization, not fuzzy.
+If neither explicit field exists, it first looks for non-empty note fields containing Japanese characters, excluding a field that exactly matches the spoken prompt. If the note has no kana/kanji fields, it falls back to the first non-prompt field containing a simple Latin word, which supports common romaji-only decks. For cards with complex templates, multiple Japanese fields, or sentences, add an explicit `VoiceAccepted` field to remove ambiguity. Variants are matched by normalized text/readings, not fuzzy semantic grading.
 
 ## Build
 
-Open the repository in Android Studio and build the `fullDebug` variant. Vosk Android and JNA are fetched from Maven Central when building. The Japanese model itself is downloaded separately on first use. Install the debug APK on your Android device and enable hands-free review in Settings → Advanced.
+Open the repository in Android Studio and build the `fullDebug` variant. Vosk Android, JNA, and Kuromoji's Japanese reading dictionary are fetched from Maven Central when building. The Japanese model itself is downloaded separately on first use. Install the debug APK on your Android device and enable hands-free review in Settings → Advanced.
 
 ## Limitations to validate on the device
 
