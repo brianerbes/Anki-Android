@@ -12,6 +12,7 @@ import android.os.Looper
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
+import com.atilika.kuromoji.ipadic.Tokenizer
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -479,6 +480,7 @@ internal class OfflineHandsFreeReview(
                     when {
                         cancel -> service.cancel()
                         stop -> service.stop()
+                        else -> Unit
                     }
                 }
                 runCatching { service.shutdown() }
@@ -498,6 +500,8 @@ internal class OfflineHandsFreeReview(
                     }
                     Model(destination.absolutePath)
                 }
+            runCatching { JapaneseSpeechTextNormalizer.warmUp() }
+                .onFailure { Timber.w(it, "Could not prewarm Japanese reading dictionary") }
             voskModel = loaded
             loaded
         }
@@ -683,6 +687,10 @@ internal object JapaneseSpeechTextNormalizer {
             if (kana.isNotBlank()) forms += kana
         }
         return forms
+    }
+
+    fun warmUp() {
+        tokenizer.tokenize("行きます")
     }
 
     fun toHiraganaReading(text: String): String {
