@@ -1448,7 +1448,11 @@ abstract class AbstractFlashcardViewer :
         if (currentCard?.id != cardId || displayAnswer) return
         if (OfflineHandsFreeReview.matchesAnswer(transcript, acceptedAnswers)) {
             showHandsFreeStatus("Correct: $transcript")
-            answerCard(Rating.GOOD)
+            handsFreeReviewer?.speakCorrectFeedback(cardId) {
+                if (currentCard?.id == cardId && !displayAnswer) {
+                    answerCard(Rating.GOOD)
+                }
+            }
             return
         }
 
