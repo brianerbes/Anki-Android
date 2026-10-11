@@ -86,10 +86,16 @@ internal class OfflineHandsFreeReview(
                 engine.setSpeechRate(0.92f)
                 ttsReady.complete(true)
                 if (spanishVoice == null) {
-                    report("No offline Spanish voice is installed. Install a local Spanish voice in Android text-to-speech settings.")
+                    report(
+                        "No offline Spanish voice is installed. " +
+                            "Install a local Spanish voice in Android text-to-speech settings.",
+                    )
                 }
                 if (japaneseVoice == null) {
-                    report("No offline Japanese voice is installed. Recognition still works, but corrections cannot be read aloud.")
+                    report(
+                        "No offline Japanese voice is installed. " +
+                            "Recognition still works, but corrections cannot be read aloud.",
+                    )
                 }
             }
         }
@@ -143,7 +149,10 @@ internal class OfflineHandsFreeReview(
         }
         if (acceptedAnswers.isEmpty()) {
             active = false
-            report("Hands-free review could not find a Japanese answer field. Add a field named VoiceAccepted or a Japanese answer field.")
+            report(
+                "Hands-free review could not find a Japanese answer field. " +
+                    "Add a field named VoiceAccepted or a Japanese answer field.",
+            )
             return
         }
 
@@ -174,7 +183,10 @@ internal class OfflineHandsFreeReview(
                 Timber.e(e, "Unable to prepare offline hands-free review")
                 if (isCurrent(requestGeneration)) {
                     active = false
-                    report("Offline Japanese model unavailable: ${e.localizedMessage ?: "download failed"}. Connect once to download the model, then review offline.")
+                    report(
+                        "Offline Japanese model unavailable: ${e.localizedMessage ?: "download failed"}. " +
+                            "Connect once to download the model, then review offline.",
+                    )
                 }
             }
         }
@@ -256,7 +268,10 @@ internal class OfflineHandsFreeReview(
             when {
                 id.startsWith("handsfree-question-") -> {
                     active = false
-                    report("Could not read the prompt. Check that an offline Spanish TTS voice is installed; no grade was assigned.")
+                    report(
+                        "Could not read the prompt. Check that an offline Spanish TTS voice is installed; " +
+                            "no grade was assigned.",
+                    )
                 }
                 id.startsWith("handsfree-correction-") -> {
                     report("Could not read the correction aloud. The answer is shown; grading Again.")
